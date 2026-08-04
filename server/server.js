@@ -408,4 +408,33 @@ app.get("/api/stats", requireAdmin, h(async (req, res) => {
   const total = shipments.length;
   const production = shipments.filter((s) => s.current_step_index >= 1 && s.current_step_index <= 3).length;
   const shipped = shipments.filter((s) => s.current_step_index >= 5 && s.current_step_index <= 6).length;
-  const inTransit = shipments.filter((s) => s.current_step_index >= 6 && s.
+  const inTransit = shipments.filter((s) => s.current_step_index >= 6 && s.current_step_index <= 8).length;
+  const delivered = shipments.filter((s) => s.current_step_index === 9).length;
+  const delayed = shipments.filter((s) => s.delayed).length;
+  res.json({ total, production, shipped, inTransit, delivered, delayed });
+}));
+
+/* =========================================================
+   ERREURS
+   ========================================================= */
+app.use((err, req, res, next) => {
+  console.error(err);
+  res.status(500).json({ error: "Error interno del servidor." });
+});
+
+/* =========================================================
+   FICHIERS STATIQUES (front-end)
+   ========================================================= */
+const FRONTEND_ROOT = path.join(__dirname, "..");
+app.use(express.static(FRONTEND_ROOT));
+
+init()
+  .then(() => {
+    app.listen(PORT, () => {
+      console.log(`Nexura Card Delivery — serveur PostgreSQL prêt sur http://localhost:${PORT}`);
+    });
+  })
+  .catch((err) => {
+    console.error("Échec de l'initialisation de la base de données :", err);
+    process.exit(1);
+  });
