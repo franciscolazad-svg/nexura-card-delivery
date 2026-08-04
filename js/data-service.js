@@ -106,6 +106,9 @@ window.DataService = {
   async getClients() {
     return get("/clients");
   },
+  async createClient(fields) {
+    return post("/clients", fields);
+  },
 
   /* ---------- EXPÉDITIONS ---------- */
   async getShipments() {
