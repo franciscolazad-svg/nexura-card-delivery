@@ -99,14 +99,35 @@ async function boot() {
     const code = document.getElementById("tracking-code").value.trim();
     if (!code) { Shell.toast("Introduce tu código de seguimiento.", "error"); return; }
 
-    const shipment = await window.DataService.getShipmentByTrackingId(code);
-    if (!shipment) { Shell.toast("Código de seguimiento no válido.", "error"); return; }
-
     const btn = e.currentTarget;
     btn.disabled = true;
     btn.textContent = "Conectando…";
-    await Shell.wait(500);
-    await window.DataService.setSession(shipment.trackingId);
+
+    let shipment;
+    try {
+      shipment = await window.DataService.getShipmentByTrackingId(code);
+    } catch (err) {
+      Shell.toast("No se pudo contactar al servidor. Inténtalo de nuevo en unos segundos.", "error");
+      btn.disabled = false;
+      btn.textContent = "Acceder al seguimiento";
+      return;
+    }
+
+    if (!shipment) {
+      Shell.toast("Código de seguimiento no válido.", "error");
+      btn.disabled = false;
+      btn.textContent = "Acceder al seguimiento";
+      return;
+    }
+
+    try {
+      await window.DataService.setSession(shipment.trackingId);
+    } catch (err) {
+      Shell.toast("No se pudo iniciar sesión. Inténtalo de nuevo.", "error");
+      btn.disabled = false;
+      btn.textContent = "Acceder al seguimiento";
+      return;
+    }
     window.location.href = "client/dashboard.html";
   });
 
