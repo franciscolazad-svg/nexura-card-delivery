@@ -1,0 +1,19 @@
+{
+  "name": "nexura-card-delivery-server",
+  "version": "1.0.0",
+  "description": "Backend Express + PostgreSQL pour Nexura Card Delivery Platform (base de données SQL réelle).",
+  "main": "server.js",
+  "type": "commonjs",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "dependencies": {
+    "cookie-parser": "^1.4.6",
+    "express": "^4.19.2",
+    "pg": "^8.13.0"
+  }
+}
