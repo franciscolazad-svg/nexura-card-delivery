@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8" />
+<script>(function(){try{document.documentElement.setAttribute("data-theme", localStorage.getItem("nexura:theme")||"light");}catch(e){}})();</script>
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Nexura Card Delivery — Iniciar sesión</title>
+<link rel="stylesheet" href="css/style.css" />
+<link rel="icon" type="image/svg+xml" href="assets/favicon.svg" />
+</head>
+<body>
+<div class="splash-screen" id="splash-screen">
+  <div class="splash-logo"><img src="assets/logo.svg" alt="Nexura" /></div>
+  <div class="splash-brand">NEXURA CARD DELIVERY</div>
+  <div class="splash-bar"><span></span></div>
+</div>
+
+<div class="auth-shell">
+  <div class="auth-visual">
+    <div class="brand">
+      <div class="brand-mark">N</div>
+      <div>
+        <div class="brand-name">Nexura</div>
+        <div class="brand-tag">Card Delivery</div>
+      </div>
+    </div>
+
+    <div class="auth-quote">
+      Track your card. <span class="accent">Anytime. Anywhere.</span><br />
+      Sigue cada etapa de la entrega de tu tarjeta Nexura, desde la producción hasta tu puerta.
+    </div>
+
+    <div class="sandbox-pill" style="width: fit-content;"><span class="dot"></span> Entorno de demostración — sin datos bancarios reales</div>
+  </div>
+
+  <div class="auth-form-side">
+    <div class="auth-form">
+      <div class="tab-switch">
+        <button class="active" id="tab-client">Portal Cliente</button>
+        <button id="tab-admin">Portal Administrador</button>
+      </div>
+
+      <!-- CLIENT AREA -->
+      <div id="panel-client">
+        <h2 style="margin-bottom: 6px;">Rastrear mi tarjeta</h2>
+        <p style="color: var(--text-low); font-size: 13px; margin-bottom: 24px;">Introduce el código de seguimiento generado por el administrador para acceder a tu envío.</p>
+
+        <div class="field">
+          <label for="tracking-code">Código de seguimiento</label>
+          <input type="text" id="tracking-code" class="mono" placeholder="Ej. NX-CARD-A1B2C3D4" autocomplete="off" />
+        </div>
+        <button class="btn btn-primary btn-block" id="client-login-btn">Acceder al seguimiento</button>
+      </div>
+
+      <!-- ADMIN AREA -->
+      <div id="panel-admin" style="display:none;">
+        <h2 style="margin-bottom: 6px;">Espacio administrador</h2>
+        <p style="color: var(--text-low); font-size: 13px; margin-bottom: 24px;">Gestiona los envíos, agentes y notificaciones de la plataforma.</p>
+
+        <div class="field">
+          <label for="admin-email">Correo electrónico</label>
+          <input type="email" id="admin-email" placeholder="admin@nexura.app" value="admin@nexura.app" />
+        </div>
+        <div class="field">
+          <label for="admin-pass">Contraseña</label>
+          <input type="password" id="admin-pass" placeholder="••••••••" />
+        </div>
+        <button class="btn btn-primary btn-block" id="admin-login-btn">Abrir el panel</button>
+      </div>
+
+      <p style="text-align:center; font-size: 11.5px; color: var(--text-low); margin-top: 22px;">
+        Plataforma de seguimiento logístico únicamente — aquí no se procesa ninguna transacción financiera.
+      </p>
+    </div>
+  </div>
+</div>
+
+<script src="js/shell.js"></script>
+<script src="js/data-service.js"></script>
+<script>
+async function boot() {
+  Shell.applyStoredTheme();
+  await window.DataService.init();
+
+  setTimeout(() => document.getElementById("splash-screen").classList.add("hide"), 700);
+
+  document.getElementById("tab-client").addEventListener("click", () => switchTab("client"));
+  document.getElementById("tab-admin").addEventListener("click", () => switchTab("admin"));
+
+  function switchTab(which) {
+    document.getElementById("tab-client").classList.toggle("active", which === "client");
+    document.getElementById("tab-admin").classList.toggle("active", which === "admin");
+    document.getElementById("panel-client").style.display = which === "client" ? "block" : "none";
+    document.getElementById("panel-admin").style.display = which === "admin" ? "block" : "none";
+  }
+
+  document.getElementById("client-login-btn").addEventListener("click", async (e) => {
+    e.preventDefault();
+    const code = document.getElementById("tracking-code").value.trim();
+    if (!code) { Shell.toast("Introduce tu código de seguimiento.", "error"); return; }
+
+    const shipment = await window.DataService.getShipmentByTrackingId(code);
+    if (!shipment) { Shell.toast("Código de seguimiento no válido.", "error"); return; }
+
+    const btn = e.currentTarget;
+    btn.disabled = true;
+    btn.textContent = "Conectando…";
+    await Shell.wait(500);
+    await window.DataService.setSession(shipment.trackingId);
+    window.location.href = "client/dashboard.html";
+  });
+
+  document.getElementById("admin-login-btn").addEventListener("click", async (e) => {
+    e.preventDefault();
+    const email = document.getElementById("admin-email").value.trim();
+    const password = document.getElementById("admin-pass").value;
+    if (!email || !password) { Shell.toast("Introduce tu correo y contraseña.", "error"); return; }
+
+    const btn = e.currentTarget;
+    btn.disabled = true;
+    btn.textContent = "Conectando…";
+    await Shell.wait(300);
+
+    try {
+      await window.DataService.setAdminSession(true, email, password);
+    } catch (err) {
+      Shell.toast(err.message || "Correo o contraseña incorrectos.", "error");
+      btn.disabled = false;
+      btn.textContent = "Abrir el panel";
+      return;
+    }
+
+    await window.DataService.logActivity("Inicio de sesión en el portal administrador.");
+    window.location.href = "admin/dashboard.html";
+  });
+}
+boot();
+</script>
+</body>
+</html>
