@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8" />
+<script>(function(){try{document.documentElement.setAttribute("data-theme", localStorage.getItem("nexura:theme")||"light");}catch(e){}})();</script>
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Nexura Card Delivery — Notificaciones</title>
+<link rel="stylesheet" href="../css/style.css" />
+<link rel="icon" type="image/svg+xml" href="../assets/favicon.svg" />
+</head>
+<body>
+
+<div class="app-shell">
+  <nav class="sidebar" id="shell-sidebar"></nav>
+
+  <main class="main">
+    <div class="topbar">
+      <div>
+        <h1>Centro de notificaciones</h1>
+        <div class="subtitle">Nuevos eventos, cambios de estado y mensajes del equipo Nexura.</div>
+      </div>
+      <div class="topbar-actions" id="shell-topbar-right"></div>
+    </div>
+
+    <div class="card card-pad reveal d1">
+      <div class="section-title">
+        <h2>Todas las notificaciones</h2>
+        <a class="link" href="#" id="mark-all-read">Marcar todo como leído</a>
+      </div>
+      <div id="notif-list"></div>
+    </div>
+  </main>
+</div>
+
+<script src="../js/shell.js"></script>
+<script src="../js/data-service.js"></script>
+<script>
+const TYPE_ICON = { success: Shell.ICONS.check, info: Shell.ICONS.bell, warning: Shell.ICONS.warn };
+
+async function boot() {
+  Shell.applyStoredTheme();
+  const client = await Shell.requireClientSession();
+  if (!client) return;
+  await Shell.renderShell("notifications", client);
+
+  await renderList(client.id);
+
+  document.getElementById("mark-all-read").addEventListener("click", async (e) => {
+    e.preventDefault();
+    await window.DataService.markAllRead(client.id);
+    await renderList(client.id);
+    Shell.toast("Todas las notificaciones se marcaron como leídas.");
+  });
+}
+
+async function renderList(clientId) {
+  const notifs = await window.DataService.getNotifications(clientId);
+  const list = document.getElementById("notif-list");
+
+  if (notifs.length === 0) {
+    list.innerHTML = `<div class="empty-state"><h3>Sin notificaciones</h3><p>Aquí se te avisará en cuanto ocurra un evento relacionado con tu tarjeta.</p></div>`;
+    return;
+  }
+
+  list.innerHTML = notifs.map((n) => `
+    <div class="notif-item ${n.read ? "" : "unread"}" data-id="${n.id}">
+      <div class="notif-icon">${TYPE_ICON[n.type] || Shell.ICONS.bell}</div>
+      <div style="flex:1; min-width:0;">
+        <div class="notif-title">${n.title}</div>
+        <div class="notif-msg">${n.message}</div>
+        <div class="notif-time">${Shell.timeAgo(n.createdAt)}${n.audience === "all" ? " · Mensaje global" : ""}</div>
+      </div>
+    </div>`).join("");
+
+  list.querySelectorAll(".notif-item").forEach((el) => {
+    el.style.cursor = "pointer";
+    el.addEventListener("click", async () => {
+      await window.DataService.markNotificationRead(el.dataset.id);
+      el.classList.remove("unread");
+    });
+  });
+}
+boot();
+</script>
+</body>
+</html>

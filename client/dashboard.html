@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8" />
+<script>(function(){try{document.documentElement.setAttribute("data-theme", localStorage.getItem("nexura:theme")||"light");}catch(e){}})();</script>
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Nexura Card Delivery — Panel principal</title>
+<link rel="stylesheet" href="../css/style.css" />
+<link rel="icon" type="image/svg+xml" href="../assets/favicon.svg" />
+</head>
+<body>
+
+<div class="app-shell">
+  <nav class="sidebar" id="shell-sidebar"></nav>
+
+  <main class="main">
+    <div class="topbar">
+      <div>
+        <h1>Panel principal</h1>
+        <div class="subtitle">Sigue la entrega de tu tarjeta Nexura en tiempo real.</div>
+      </div>
+      <div class="topbar-actions" id="shell-topbar-right"></div>
+    </div>
+
+    <div id="dashboard-content">
+      <div class="card card-pad reveal d1">
+        <div class="skeleton skeleton-line" style="width:40%;"></div>
+        <div class="skeleton skeleton-line" style="width:60%;"></div>
+        <div class="skeleton skeleton-line" style="width:30%;"></div>
+      </div>
+    </div>
+  </main>
+</div>
+
+<script src="../js/shell.js"></script>
+<script src="../js/data-service.js"></script>
+<script>
+let CLIENT, ACTIVE;
+
+async function boot() {
+  Shell.applyStoredTheme();
+  CLIENT = await Shell.requireClientSession();
+  if (!CLIENT) return;
+  await Shell.renderShell("dashboard", CLIENT);
+
+  const shipment = await window.DataService.getShipment(CLIENT.shipmentId);
+
+  if (!shipment) {
+    document.getElementById("dashboard-content").innerHTML = `
+      <div class="card card-pad empty-state">
+        <h3>Envío no encontrado</h3>
+        <p>Este código de seguimiento ya no está asociado a ningún envío activo.</p>
+      </div>`;
+    return;
+  }
+
+  renderDashboard(shipment);
+}
+
+function statusPillClass(s) {
+  if (s.currentStepIndex === 9) return "completed";
+  if (s.delayed) return "rejected";
+  return "processing";
+}
+
+function renderDashboard(shipment) {
+  ACTIVE = shipment;
+  const s = ACTIVE;
+  const STEPS = window.DataService.STEPS;
+  const percent = window.DataService.computePercent(s.currentStepIndex);
+
+  const eventByStep = {};
+  s.events.forEach((e) => (eventByStep[e.stepIndex] = e));
+
+  const timelineHtml = STEPS.map((step, i) => {
+    const ev = eventByStep[i];
+    const state = i < s.currentStepIndex ? "done" : i === s.currentStepIndex ? "current" : "pending";
+    const icon = state === "done" ? Shell.ICONS.check : state === "current" ? Shell.ICONS.bolt : Shell.ICONS.clock;
+    return `
+      <div class="timeline-item ${state}">
+        <div class="timeline-dot">${icon}</div>
+        <div class="timeline-head">
+          <div class="t-title">${step.label}</div>
+          ${ev ? `<div class="t-when">${Shell.fmtDateTime(ev.date)}</div>` : ""}
+        </div>
+        ${ev ? `<div class="t-meta">${ev.comment}</div>
+        <div class="t-agent">${Shell.ICONS.user}${ev.agent}</div>` : `<div class="t-meta">Pendiente de las etapas anteriores.</div>`}
+      </div>`;
+  }).join("");
+
+  const historyRowArr = [...s.events].reverse().map((e) => `
+    <tr>
+      <td>${Shell.fmtDate(e.date)}</td>
+      <td class="mono">${Shell.fmtTime(e.date)}</td>
+      <td>${STEPS[e.stepIndex].label}</td>
+      <td>${e.agent}</td>
+      <td><span class="status-pill ${e.status === "current" ? "processing" : "completed"}">${e.status === "current" ? "En curso" : "Completado"}</span></td>
+    </tr>`);
+  const historyRowsMini = historyRowArr.slice(0, 4).join("");
+
+  document.getElementById("dashboard-content").innerHTML = `
+    ${s.delayed ? `
+    <div class="delay-banner reveal">
+      ${Shell.ICONS.warn}
+      <div>Este envío presenta un ligero retraso. Nuestro equipo de logística le da seguimiento prioritario.</div>
+    </div>` : ""}
+
+    <div class="card card-pad reveal d1">
+      <div class="tracking-head">
+        <div class="tracking-id-block">
+          <div class="eyebrow">Número de seguimiento</div>
+          <div class="tid">${s.trackingId}</div>
+          <div style="margin-top:10px; display:flex; gap:10px; flex-wrap:wrap; align-items:center;">
+            <span class="card-type-chip">${Shell.ICONS.card}${s.cardType}</span>
+            <span class="status-pill ${statusPillClass(s)}">${s.status}</span>
+          </div>
+        </div>
+        <div class="eta-block">
+          <div class="eyebrow">Entrega estimada</div>
+          <div class="eta-value">${Shell.fmtDate(s.estimatedDelivery)}</div>
+          <div style="font-size:11.5px; color:var(--text-low); margin-top:6px;">Creado el ${Shell.fmtDate(s.createdAt)}</div>
+        </div>
+      </div>
+
+      <div class="progress-shell">
+        <div class="p-top">
+          <div class="p-step-label">${window.DataService.STEPS[s.currentStepIndex].label}</div>
+          <div class="p-percent">${percent}%</div>
+        </div>
+        <div class="progress-track"><div class="progress-fill" style="width:${percent}%;"></div></div>
+      </div>
+    </div>
+
+    <div class="stat-grid" style="margin-top:18px;">
+      <div class="card stat-card reveal d1">
+        <div class="stat-head"><div class="stat-label">Tipo de tarjeta</div><div class="stat-icon">${Shell.ICONS.card}</div></div>
+        <div class="stat-value" style="font-size:14px;">${s.cardType}</div>
+      </div>
+      <div class="card stat-card reveal d2">
+        <div class="stat-head"><div class="stat-label">Fecha de creación</div><div class="stat-icon">${Shell.ICONS.doc}</div></div>
+        <div class="stat-value" style="font-size:14px;">${Shell.fmtDate(s.createdAt)}</div>
+      </div>
+      <div class="card stat-card reveal d3">
+        <div class="stat-head"><div class="stat-label">Última actualización</div><div class="stat-icon">${Shell.ICONS.clock}</div></div>
+        <div class="stat-value" style="font-size:14px;">${Shell.timeAgo(s.lastUpdate)}</div>
+      </div>
+      <div class="card stat-card reveal d4">
+        <div class="stat-head"><div class="stat-label">Dirección de entrega</div><div class="stat-icon">${Shell.ICONS.pin}</div></div>
+        <div class="stat-value" style="font-size:13px; line-height:1.4;">${s.shippingAddress}</div>
+      </div>
+    </div>
+
+    <div class="grid-2">
+      <div class="card card-pad reveal d2">
+        <div class="section-title"><h2>Línea de tiempo inteligente</h2></div>
+        <div class="timeline">${timelineHtml}</div>
+      </div>
+
+      <div class="card card-pad reveal d3">
+        <div class="section-title"><h2>Historial reciente</h2><a class="link" href="history.html">Ver todo</a></div>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Fecha</th><th>Hora</th><th>Acción</th><th>Agente</th><th>Estado</th></tr></thead>
+            <tbody>${historyRowsMini}</tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+boot();
+</script>
+</body>
+</html>

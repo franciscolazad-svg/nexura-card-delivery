@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8" />
+<script>(function(){try{document.documentElement.setAttribute("data-theme", localStorage.getItem("nexura:theme")||"light");}catch(e){}})();</script>
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Nexura Card Delivery — Historial</title>
+<link rel="stylesheet" href="../css/style.css" />
+<link rel="icon" type="image/svg+xml" href="../assets/favicon.svg" />
+</head>
+<body>
+
+<div class="app-shell">
+  <nav class="sidebar" id="shell-sidebar"></nav>
+
+  <main class="main">
+    <div class="topbar">
+      <div>
+        <h1>Historial de eventos</h1>
+        <div class="subtitle">Todas las etapas registradas para tus envíos.</div>
+      </div>
+      <div class="topbar-actions" id="shell-topbar-right"></div>
+    </div>
+
+    <div id="history-content" class="card card-pad reveal d1">
+      <div class="skeleton skeleton-line" style="width:40%;"></div>
+      <div class="skeleton skeleton-line" style="width:70%;"></div>
+    </div>
+  </main>
+</div>
+
+<script src="../js/shell.js"></script>
+<script src="../js/data-service.js"></script>
+<script>
+async function boot() {
+  Shell.applyStoredTheme();
+  const client = await Shell.requireClientSession();
+  if (!client) return;
+  await Shell.renderShell("history", client);
+
+  const shipment = await window.DataService.getShipment(client.shipmentId);
+  const STEPS = window.DataService.STEPS;
+
+  if (!shipment) {
+    document.getElementById("history-content").innerHTML = `
+      <div class="empty-state"><h3>Sin historial</h3><p>Este código de seguimiento ya no está asociado a ningún envío activo.</p></div>`;
+    return;
+  }
+
+  const rows = [...shipment.events].reverse().map((e) => `
+    <tr>
+      <td>${Shell.fmtDate(e.date)}</td>
+      <td class="mono">${Shell.fmtTime(e.date)}</td>
+      <td>${STEPS[e.stepIndex].label}</td>
+      <td>${e.agent}</td>
+      <td><span class="status-pill ${e.status === "current" ? "processing" : "completed"}">${e.status === "current" ? "En curso" : "Completado"}</span></td>
+    </tr>`).join("");
+
+  document.getElementById("history-content").innerHTML = `
+    <div class="section-title" style="margin-bottom:16px;">
+      <h2>${shipment.trackingId} <span style="color:var(--text-low); font-weight:400;">— ${shipment.cardType}</span></h2>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Fecha</th><th>Hora</th><th>Acción</th><th>Agente</th><th>Estado</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>`;
+}
+boot();
+</script>
+</body>
+</html>
