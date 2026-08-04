@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8" />
+<script>(function(){try{document.documentElement.setAttribute("data-theme", localStorage.getItem("nexura:theme")||"light");}catch(e){}})();</script>
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Nexura Admin — Agentes</title>
+<link rel="stylesheet" href="../css/style.css" />
+<link rel="icon" type="image/svg+xml" href="../assets/favicon.svg" />
+</head>
+<body>
+
+<div class="app-shell">
+  <nav class="sidebar" id="shell-sidebar"></nav>
+
+  <main class="main">
+    <div class="topbar">
+      <div>
+        <h1>Gestión de agentes</h1>
+        <div class="subtitle">El equipo responsable de la verificación, producción y entrega de las tarjetas.</div>
+      </div>
+      <div class="topbar-actions" id="shell-topbar-right"></div>
+    </div>
+
+    <div class="card card-pad reveal d1">
+      <div class="toolbar">
+        <div class="search-box" id="agent-search-box"></div>
+        <button class="btn btn-primary" id="new-agent-btn">Añadir un agente</button>
+      </div>
+      <div class="agent-grid" id="agent-grid" style="margin-top:16px;"></div>
+    </div>
+  </main>
+</div>
+
+<!-- AGENT MODAL -->
+<div class="modal-backdrop" id="agent-modal">
+  <div class="modal" style="max-width: 460px;">
+    <div class="modal-head"><h3 id="agent-modal-title">Añadir un agente</h3><span class="modal-close" data-close="agent-modal">&times;</span></div>
+    <div>
+      <input type="hidden" id="agent-id" />
+      <div class="field"><label for="agent-name">Nombre</label><input type="text" id="agent-name" placeholder="Ej. Laura Dinescu" /></div>
+      <div class="field"><label for="agent-role">Función</label><input type="text" id="agent-role" placeholder="Ej. Agente de logística" /></div>
+      <div class="field"><label for="agent-email">Correo electrónico</label><input type="email" id="agent-email" placeholder="agent@nexura.app" /></div>
+      <div class="field"><label for="agent-phone">Teléfono</label><input type="text" id="agent-phone" placeholder="+1 (___) ___-____" /></div>
+      <div class="field">
+        <label for="agent-status">Estado</label>
+        <select id="agent-status"><option value="Activo">Activo</option><option value="Inactivo">Inactivo</option></select>
+      </div>
+      <button class="btn btn-primary btn-block" id="save-agent-btn">Guardar</button>
+    </div>
+  </div>
+</div>
+
+<script src="../js/shell.js"></script>
+<script src="../js/data-service.js"></script>
+<script src="../js/admin-shell.js"></script>
+<script>
+let AGENTS = [];
+
+async function boot() {
+  Shell.applyStoredTheme();
+  const ok = await Shell.requireAdminSession();
+  if (!ok) return;
+  await AdminShell.renderAdminShell("agents");
+
+  document.getElementById("agent-search-box").innerHTML = `${Shell.ICONS.search}<input type="text" id="agent-search" placeholder="Buscar un agente…" />`;
+  document.getElementById("agent-search").addEventListener("input", renderGrid);
+
+  document.querySelectorAll(".modal-close").forEach((el) => el.addEventListener("click", () => closeModal(el.dataset.close)));
+  document.querySelectorAll(".modal-backdrop").forEach((el) => el.addEventListener("click", (e) => { if (e.target === el) closeModal(el.id); }));
+
+  document.getElementById("new-agent-btn").addEventListener("click", () => openAgentModal(null));
+  document.getElementById("save-agent-btn").addEventListener("click", saveAgent);
+
+  await loadAgents();
+}
+
+async function loadAgents() {
+  AGENTS = await window.DataService.getAgents();
+  renderGrid();
+}
+
+function openModal(id) { document.getElementById(id).classList.add("open"); }
+function closeModal(id) { document.getElementById(id).classList.remove("open"); }
+
+async function renderGrid() {
+  const q = (document.getElementById("agent-search")?.value || "").toLowerCase();
+  const filtered = AGENTS.filter((a) => !q || a.name.toLowerCase().includes(q) || a.role.toLowerCase().includes(q));
+
+  const loads = await Promise.all(filtered.map((a) => window.DataService.agentLoad(a.name)));
+
+  document.getElementById("agent-grid").innerHTML = filtered.map((a, i) => `
+    <div class="card agent-card">
+      <div class="a-top">
+        <div class="a-avatar">${Shell.initials(a.name)}</div>
+        <div style="flex:1; min-width:0;">
+          <div class="a-name">${a.name}</div>
+          <div class="a-role">${a.role}</div>
+        </div>
+        <span class="status-pill ${a.status === "Activo" ? "completed" : "rejected"}">${a.status}</span>
+      </div>
+      <div class="a-info">
+        <div class="a-info-row">${Shell.ICONS.mail}${a.email}</div>
+        <div class="a-info-row">${Shell.ICONS.phone}${a.phone}</div>
+      </div>
+      <div class="a-foot">
+        <div class="a-load">${loads[i]} envío(s) activo(s)</div>
+        <div style="display:flex; gap:6px;">
+          <button class="icon-btn" title="Editar" onclick="openAgentModal('${a.id}')">${AdminShell.ADMIN_ICONS.edit}</button>
+          <button class="icon-btn" title="Eliminar" onclick="removeAgent('${a.id}')">${AdminShell.ADMIN_ICONS.trash}</button>
+        </div>
+      </div>
+    </div>`).join("") || `<div class="empty-state"><h3>Sin agentes</h3><p>Añade un primer agente al equipo.</p></div>`;
+}
+
+window.openAgentModal = function (id) {
+  const a = id ? AGENTS.find((x) => x.id === id) : null;
+  document.getElementById("agent-modal-title").textContent = a ? "Editar agente" : "Añadir un agente";
+  document.getElementById("agent-id").value = a ? a.id : "";
+  document.getElementById("agent-name").value = a ? a.name : "";
+  document.getElementById("agent-role").value = a ? a.role : "";
+  document.getElementById("agent-email").value = a ? a.email : "";
+  document.getElementById("agent-phone").value = a ? a.phone : "";
+  document.getElementById("agent-status").value = a ? a.status : "Activo";
+  openModal("agent-modal");
+};
+
+async function saveAgent() {
+  const id = document.getElementById("agent-id").value;
+  const fields = {
+    name: document.getElementById("agent-name").value.trim(),
+    role: document.getElementById("agent-role").value.trim(),
+    email: document.getElementById("agent-email").value.trim(),
+    phone: document.getElementById("agent-phone").value.trim(),
+    status: document.getElementById("agent-status").value,
+  };
+  if (!fields.name || !fields.email) { Shell.toast("El nombre y el correo son obligatorios.", "error"); return; }
+
+  if (id) await window.DataService.updateAgent(id, fields);
+  else await window.DataService.createAgent(fields);
+
+  await loadAgents();
+  closeModal("agent-modal");
+  Shell.toast(id ? "Agente actualizado." : "Agente añadido al equipo.");
+}
+
+window.removeAgent = async function (id) {
+  if (!confirm("¿Quitar a este agente del equipo?")) return;
+  await window.DataService.deleteAgent(id);
+  await loadAgents();
+  Shell.toast("Agente eliminado.", "info");
+};
+boot();
+</script>
+</body>
+</html>

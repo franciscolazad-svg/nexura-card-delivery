@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8" />
+<script>(function(){try{document.documentElement.setAttribute("data-theme", localStorage.getItem("nexura:theme")||"light");}catch(e){}})();</script>
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Nexura Admin — Configuración</title>
+<link rel="stylesheet" href="../css/style.css" />
+<link rel="icon" type="image/svg+xml" href="../assets/favicon.svg" />
+</head>
+<body>
+
+<div class="app-shell">
+  <nav class="sidebar" id="shell-sidebar"></nav>
+
+  <main class="main">
+    <div class="topbar">
+      <div>
+        <h1>Configuración global</h1>
+        <div class="subtitle">Personaliza la identidad y la seguridad de la plataforma.</div>
+      </div>
+      <div class="topbar-actions" id="shell-topbar-right"></div>
+    </div>
+
+    <div class="grid-2">
+      <div class="card card-pad reveal d1">
+        <div class="settings-section">
+          <h3>Identidad de la plataforma</h3>
+          <div class="s-desc">Logo, nombre y eslogan mostrados en ambos portales.</div>
+          <div class="logo-upload-row" style="margin-bottom:16px;">
+            <div class="logo-preview"><img src="../assets/logo.svg" alt="Logo" /></div>
+            <div style="font-size:12px; color:var(--text-low);">Logo Nexura actual (vectorial, se aplica automáticamente en modo claro y oscuro).</div>
+          </div>
+          <div class="field"><label for="s-name">Nombre de la plataforma</label><input type="text" id="s-name" /></div>
+          <div class="field"><label for="s-tagline">Eslogan</label><input type="text" id="s-tagline" /></div>
+        </div>
+
+        <div class="settings-section">
+          <h3>Colores</h3>
+          <div class="s-desc">Color distintivo usado para los acentos, botones y gráficos.</div>
+          <div class="color-swatch-row" id="color-swatches"></div>
+        </div>
+
+        <div class="settings-section">
+          <h3>Soporte</h3>
+          <div class="s-desc">Datos de contacto mostrados a los clientes en caso de necesidad.</div>
+          <div class="field-row">
+            <div class="field"><label for="s-email">Correo de soporte</label><input type="email" id="s-email" /></div>
+            <div class="field"><label for="s-phone">Teléfono de soporte</label><input type="text" id="s-phone" /></div>
+          </div>
+        </div>
+
+        <div class="settings-section">
+          <h3>Pie de página</h3>
+          <div class="s-desc">Texto legal mostrado en la parte inferior de las páginas del portal cliente.</div>
+          <div class="field"><textarea id="s-footer" class="f-textarea"></textarea></div>
+        </div>
+
+        <button class="btn btn-primary" id="save-settings-btn">Guardar configuración</button>
+      </div>
+
+      <div>
+        <div class="card card-pad reveal d2" style="margin-bottom:18px;">
+          <div class="settings-section" style="border-bottom:none; margin-bottom:0; padding-bottom:0;">
+            <h3>Seguridad y arquitectura de datos</h3>
+            <div class="s-desc">Esta plataforma está dedicada únicamente al seguimiento logístico — no implementa ninguna función bancaria.</div>
+            <div class="security-row"><div class="k">Autenticación</div><div class="v">Sesiones por cookie (servidor)</div></div>
+            <div class="security-row"><div class="k">Gestión de roles</div><div class="v">Cliente / Administrador</div></div>
+            <div class="security-row"><div class="k">Capa de datos</div><div class="v">Base de datos SQL (SQLite)</div></div>
+            <div class="security-row"><div class="k">Servidor</div><div class="v">Node.js + Express</div></div>
+          </div>
+        </div>
+
+        <div class="card card-pad reveal d3">
+          <div class="section-title"><h2>Registro de actividad del administrador</h2></div>
+          <div id="admin-activity-log"></div>
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
+
+<script src="../js/shell.js"></script>
+<script src="../js/data-service.js"></script>
+<script src="../js/admin-shell.js"></script>
+<script>
+const PALETTE = ["#8452d9", "#22a06b", "#2f86ad", "#d6483a", "#8a63d6", "#14161a"];
+
+async function boot() {
+  Shell.applyStoredTheme();
+  const ok = await Shell.requireAdminSession();
+  if (!ok) return;
+  await AdminShell.renderAdminShell("settings");
+
+  const settings = await window.DataService.getSettings();
+  document.getElementById("s-name").value = settings.platformName;
+  document.getElementById("s-tagline").value = settings.tagline;
+  document.getElementById("s-email").value = settings.supportEmail;
+  document.getElementById("s-phone").value = settings.supportPhone;
+  document.getElementById("s-footer").value = settings.footerText;
+
+  document.getElementById("color-swatches").innerHTML = PALETTE.map((c) => `
+    <div class="color-swatch ${c === settings.primaryColor ? "active" : ""}" style="background:${c};" data-color="${c}"></div>`).join("");
+  document.querySelectorAll(".color-swatch").forEach((sw) => {
+    sw.addEventListener("click", () => {
+      document.querySelectorAll(".color-swatch").forEach((x) => x.classList.remove("active"));
+      sw.classList.add("active");
+    });
+  });
+
+  document.getElementById("save-settings-btn").addEventListener("click", saveSettings);
+
+  const log = await window.DataService.getActivityLog();
+  document.getElementById("admin-activity-log").innerHTML = log.map((l) => `
+    <div class="log-row">
+      <div class="log-time">${Shell.fmtDate(l.date)} · ${Shell.fmtTime(l.date)}</div>
+      <div class="log-text"><b>${l.actor}</b> — ${l.text}</div>
+    </div>`).join("") || `<div class="empty-state"><p>Sin actividad registrada.</p></div>`;
+}
+
+async function saveSettings() {
+  const activeSwatch = document.querySelector(".color-swatch.active");
+  await window.DataService.updateSettings({
+    platformName: document.getElementById("s-name").value.trim(),
+    tagline: document.getElementById("s-tagline").value.trim(),
+    supportEmail: document.getElementById("s-email").value.trim(),
+    supportPhone: document.getElementById("s-phone").value.trim(),
+    footerText: document.getElementById("s-footer").value.trim(),
+    primaryColor: activeSwatch ? activeSwatch.dataset.color : "#8452d9",
+  });
+  Shell.toast("Configuración guardada.");
+}
+boot();
+</script>
+</body>
+</html>
