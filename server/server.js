@@ -264,6 +264,16 @@ app.get("/api/clients", requireAdmin, h(async (req, res) => {
   res.json(await query("SELECT * FROM clients"));
 }));
 
+app.post("/api/clients", requireAdmin, h(async (req, res) => {
+  const fields = req.body || {};
+  if (!fields.name || !fields.email) return res.status(400).json({ error: "El nombre y el correo son obligatorios." });
+  const initials = fields.name.trim().split(/\s+/).map((p) => p[0]).slice(0, 2).join("").toUpperCase();
+  const client = { id: uid("usr"), name: fields.name.trim(), email: fields.email.trim(), initials, address: fields.address || "" };
+  await query("INSERT INTO clients (id, name, email, initials, address) VALUES ($1,$2,$3,$4,$5)", [client.id, client.name, client.email, client.initials, client.address]);
+  await logActivity(`Cliente ${client.name} añadido.`);
+  res.status(201).json(client);
+}));
+
 /* =========================================================
    AGENTS
    ========================================================= */
@@ -398,33 +408,4 @@ app.get("/api/stats", requireAdmin, h(async (req, res) => {
   const total = shipments.length;
   const production = shipments.filter((s) => s.current_step_index >= 1 && s.current_step_index <= 3).length;
   const shipped = shipments.filter((s) => s.current_step_index >= 5 && s.current_step_index <= 6).length;
-  const inTransit = shipments.filter((s) => s.current_step_index >= 6 && s.current_step_index <= 8).length;
-  const delivered = shipments.filter((s) => s.current_step_index === 9).length;
-  const delayed = shipments.filter((s) => s.delayed).length;
-  res.json({ total, production, shipped, inTransit, delivered, delayed });
-}));
-
-/* =========================================================
-   ERREURS
-   ========================================================= */
-app.use((err, req, res, next) => {
-  console.error(err);
-  res.status(500).json({ error: "Error interno del servidor." });
-});
-
-/* =========================================================
-   FICHIERS STATIQUES (front-end)
-   ========================================================= */
-const FRONTEND_ROOT = path.join(__dirname, "..");
-app.use(express.static(FRONTEND_ROOT));
-
-init()
-  .then(() => {
-    app.listen(PORT, () => {
-      console.log(`Nexura Card Delivery — serveur PostgreSQL prêt sur http://localhost:${PORT}`);
-    });
-  })
-  .catch((err) => {
-    console.error("Échec de l'initialisation de la base de données :", err);
-    process.exit(1);
-  });
+  const inTransit = shipments.filter((s) => s.current_step_index >= 6 && s.
