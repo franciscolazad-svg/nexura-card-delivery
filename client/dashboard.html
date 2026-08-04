@@ -43,7 +43,17 @@ async function boot() {
   if (!CLIENT) return;
   await Shell.renderShell("dashboard", CLIENT);
 
-  const shipment = await window.DataService.getShipment(CLIENT.shipmentId);
+  let shipment;
+  try {
+    shipment = await window.DataService.getShipmentByTrackingId(CLIENT.trackingId);
+  } catch (err) {
+    document.getElementById("dashboard-content").innerHTML = `
+      <div class="card card-pad empty-state">
+        <h3>No se pudo cargar el envío</h3>
+        <p>No se pudo contactar al servidor. Recarga la página en unos segundos.</p>
+      </div>`;
+    return;
+  }
 
   if (!shipment) {
     document.getElementById("dashboard-content").innerHTML = `
