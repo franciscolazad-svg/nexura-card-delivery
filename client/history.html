@@ -38,7 +38,14 @@ async function boot() {
   if (!client) return;
   await Shell.renderShell("history", client);
 
-  const shipment = await window.DataService.getShipment(client.shipmentId);
+  let shipment;
+  try {
+    shipment = await window.DataService.getShipmentByTrackingId(client.trackingId);
+  } catch (err) {
+    document.getElementById("history-content").innerHTML = `
+      <div class="empty-state"><h3>No se pudo cargar el historial</h3><p>No se pudo contactar al servidor. Recarga la página en unos segundos.</p></div>`;
+    return;
+  }
   const STEPS = window.DataService.STEPS;
 
   if (!shipment) {
@@ -71,3 +78,4 @@ boot();
 </script>
 </body>
 </html>
+
