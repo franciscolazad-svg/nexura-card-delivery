@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8" />
+<script>(function(){try{document.documentElement.setAttribute("data-theme", localStorage.getItem("nexura:theme")||"light");}catch(e){}})();</script>
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Nexura Admin — Resumen general</title>
+<link rel="stylesheet" href="../css/style.css" />
+<link rel="icon" type="image/svg+xml" href="../assets/favicon.svg" />
+</head>
+<body>
+
+<div class="app-shell">
+  <nav class="sidebar" id="shell-sidebar"></nav>
+
+  <main class="main">
+    <div class="topbar">
+      <div>
+        <h1>Resumen general</h1>
+        <div class="subtitle">Actividad global de los envíos de tarjetas Nexura.</div>
+      </div>
+      <div class="topbar-actions" id="shell-topbar-right"></div>
+    </div>
+
+    <div class="stat-grid">
+      <div class="card stat-card reveal d1">
+        <div class="stat-head"><div class="stat-label">Envíos totales</div><div class="stat-icon"></div></div>
+        <div class="stat-value" id="stat-total">—</div>
+        <div class="trend up">todas las tarjetas</div>
+      </div>
+      <div class="card stat-card reveal d2">
+        <div class="stat-head"><div class="stat-label">Tarjetas en producción</div><div class="stat-icon"></div></div>
+        <div class="stat-value" id="stat-production">—</div>
+        <div class="trend up">verificación → impresión</div>
+      </div>
+      <div class="card stat-card reveal d3">
+        <div class="stat-head"><div class="stat-label">Tarjetas enviadas</div><div class="stat-icon"></div></div>
+        <div class="stat-value" id="stat-shipped">—</div>
+        <div class="trend up">entregadas al transportista</div>
+      </div>
+      <div class="card stat-card reveal d4">
+        <div class="stat-head"><div class="stat-label">Tarjetas en tránsito</div><div class="stat-icon"></div></div>
+        <div class="stat-value" id="stat-transit">—</div>
+        <div class="trend up">en movimiento</div>
+      </div>
+      <div class="card stat-card reveal d4">
+        <div class="stat-head"><div class="stat-label">Tarjetas entregadas</div><div class="stat-icon"></div></div>
+        <div class="stat-value" id="stat-delivered">—</div>
+        <div class="trend up">ciclo completo</div>
+      </div>
+      <div class="card stat-card reveal d4">
+        <div class="stat-head"><div class="stat-label">Posibles retrasos</div><div class="stat-icon down"></div></div>
+        <div class="stat-value" id="stat-delayed">—</div>
+        <div class="trend down">a vigilar</div>
+      </div>
+    </div>
+
+    <div class="grid-2">
+      <div class="card card-pad reveal d2">
+        <div class="section-title"><h2>Distribución por etapa del ciclo</h2></div>
+        <div class="bar-chart" id="bar-chart"></div>
+      </div>
+      <div class="card card-pad reveal d3">
+        <div class="section-title"><h2>Estados de los envíos</h2></div>
+        <div class="donut-wrap" id="donut-chart"></div>
+      </div>
+    </div>
+
+    <div class="grid-2">
+      <div class="card card-pad reveal d3">
+        <div class="section-title"><h2>Envíos recientes</h2><a class="link" href="shipments.html">Ver todo</a></div>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Seguimiento</th><th>Cliente</th><th>Etapa</th><th>Progreso</th></tr></thead>
+            <tbody id="recent-shipments"></tbody>
+          </table>
+        </div>
+      </div>
+      <div class="card card-pad reveal d4">
+        <div class="section-title"><h2>Registro de actividad</h2></div>
+        <div id="activity-log"></div>
+      </div>
+    </div>
+  </main>
+</div>
+
+<script src="../js/shell.js"></script>
+<script src="../js/data-service.js"></script>
+<script src="../js/admin-shell.js"></script>
+<script>
+async function boot() {
+  Shell.applyStoredTheme();
+  const ok = await Shell.requireAdminSession();
+  if (!ok) return;
+  await AdminShell.renderAdminShell("dashboard");
+
+  const icons = { box: Shell.ICONS.box, bolt: Shell.ICONS.bolt, truck: Shell.ICONS.truck, check: Shell.ICONS.check, warn: Shell.ICONS.warn };
+  document.querySelectorAll(".stat-icon")[0].innerHTML = icons.box;
+  document.querySelectorAll(".stat-icon")[1].innerHTML = icons.bolt;
+  document.querySelectorAll(".stat-icon")[2].innerHTML = icons.truck;
+  document.querySelectorAll(".stat-icon")[3].innerHTML = icons.truck;
+  document.querySelectorAll(".stat-icon")[4].innerHTML = icons.check;
+  document.querySelectorAll(".stat-icon")[5].innerHTML = icons.warn;
+
+  const stats = await window.DataService.getStats();
+  document.getElementById("stat-total").textContent = stats.total;
+  document.getElementById("stat-production").textContent = stats.production;
+  document.getElementById("stat-shipped").textContent = stats.shipped;
+  document.getElementById("stat-transit").textContent = stats.inTransit;
+  document.getElementById("stat-delivered").textContent = stats.delivered;
+  document.getElementById("stat-delayed").textContent = stats.delayed;
+
+  const shipments = await window.DataService.getShipments();
+  const STEPS = window.DataService.STEPS;
+
+  // Bar chart — count per step
+  const counts = STEPS.map((_, i) => shipments.filter((s) => s.currentStepIndex === i).length);
+  const max = Math.max(1, ...counts);
+  document.getElementById("bar-chart").innerHTML = STEPS.map((step, i) => `
+    <div class="bar-col">
+      <div class="bar-value">${counts[i]}</div>
+      <div class="bar" style="height:${Math.max(4, (counts[i] / max) * 130)}px;"></div>
+      <div class="bar-label">${step.short}</div>
+    </div>`).join("");
+
+  // Donut chart — status distribution
+  const delivered = shipments.filter((s) => s.currentStepIndex === 9).length;
+  const delayed = shipments.filter((s) => s.delayed).length;
+  const enCours = shipments.length - delivered - delayed;
+  const segments = [
+    { label: "En curso", value: enCours, color: "var(--violet-400)" },
+    { label: "Entregadas", value: delivered, color: "var(--emerald)" },
+    { label: "Retrasadas", value: delayed, color: "var(--coral)" },
+  ];
+  renderDonut(segments, shipments.length);
+
+  // Recent shipments
+  const recent = [...shipments].sort((a, b) => new Date(b.lastUpdate) - new Date(a.lastUpdate)).slice(0, 6);
+  document.getElementById("recent-shipments").innerHTML = recent.map((s) => `
+    <tr>
+      <td class="mono">${s.trackingId}</td>
+      <td>${s.clientName}</td>
+      <td>${STEPS[s.currentStepIndex].label}</td>
+      <td>${window.DataService.computePercent(s.currentStepIndex)}%</td>
+    </tr>`).join("");
+
+  // Activity log
+  const log = await window.DataService.getActivityLog();
+  document.getElementById("activity-log").innerHTML = log.slice(0, 8).map((l) => `
+    <div class="log-row">
+      <div class="log-time">${Shell.fmtTime(l.date)}</div>
+      <div class="log-text"><b>${l.actor}</b> — ${l.text}</div>
+    </div>`).join("") || `<div class="empty-state"><p>Sin actividad reciente.</p></div>`;
+}
+
+function renderDonut(segments, total) {
+  const r = 60, cx = 70, cy = 70, stroke = 18;
+  const circumference = 2 * Math.PI * r;
+  let offset = 0;
+  const colorMap = { "var(--violet-400)": "#a37fe8", "var(--emerald)": "#22a06b", "var(--coral)": "#d6483a" };
+  const dark = document.documentElement.getAttribute("data-theme") === "dark";
+  const colorMapDark = { "var(--violet-400)": "#a37fe8", "var(--emerald)": "#4ade9a", "var(--coral)": "#f2695c" };
+  const cmap = dark ? colorMapDark : colorMap;
+
+  const circles = segments.map((seg) => {
+    const frac = total > 0 ? seg.value / total : 0;
+    const len = frac * circumference;
+    const circle = `<circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="${cmap[seg.color]}" stroke-width="${stroke}"
+      stroke-dasharray="${len} ${circumference - len}" stroke-dashoffset="${-offset}" stroke-linecap="butt" transform="rotate(-90 ${cx} ${cy})" />`;
+    offset += len;
+    return circle;
+  }).join("");
+
+  const svg = `<svg width="140" height="140" viewBox="0 0 140 140">
+    <circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="var(--line)" stroke-width="${stroke}" />
+    ${circles}
+    <text x="${cx}" y="${cy - 3}" text-anchor="middle" class="donut-center-label" fill="currentColor">${total}</text>
+    <text x="${cx}" y="${cy + 14}" text-anchor="middle" class="donut-center-sub">TOTAL</text>
+  </svg>`;
+
+  const legend = segments.map((seg) => `
+    <div class="donut-legend-row">
+      <div class="dl-label"><span class="dl-dot" style="background:${cmap[seg.color]};"></span>${seg.label}</div>
+      <div class="dl-value">${seg.value}</div>
+    </div>`).join("");
+
+  document.getElementById("donut-chart").innerHTML = `${svg}<div class="donut-legend">${legend}</div>`;
+}
+boot();
+</script>
+</body>
+</html>

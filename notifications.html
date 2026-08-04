@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8" />
+<script>(function(){try{document.documentElement.setAttribute("data-theme", localStorage.getItem("nexura:theme")||"light");}catch(e){}})();</script>
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Nexura Admin — Notificaciones</title>
+<link rel="stylesheet" href="../css/style.css" />
+<link rel="icon" type="image/svg+xml" href="../assets/favicon.svg" />
+</head>
+<body>
+
+<div class="app-shell">
+  <nav class="sidebar" id="shell-sidebar"></nav>
+
+  <main class="main">
+    <div class="topbar">
+      <div>
+        <h1>Gestión de notificaciones</h1>
+        <div class="subtitle">Crea, programa y envía mensajes a los clientes Nexura.</div>
+      </div>
+      <div class="topbar-actions" id="shell-topbar-right"></div>
+    </div>
+
+    <div class="grid-2">
+      <div class="card card-pad reveal d1">
+        <div class="section-title"><h2>Nueva notificación</h2></div>
+        <div class="field">
+          <label for="n-audience">Destinatario</label>
+          <select id="n-audience">
+            <option value="all">Envío global — todos los clientes</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="n-type">Tipo</label>
+          <select id="n-type">
+            <option value="info">Información</option>
+            <option value="success">Confirmación</option>
+            <option value="warning">Advertencia</option>
+          </select>
+        </div>
+        <div class="field"><label for="n-title">Título</label><input type="text" id="n-title" placeholder="Ej. Mantenimiento programado" /></div>
+        <div class="field"><label for="n-message">Mensaje</label><textarea id="n-message" class="f-textarea" placeholder="Contenido del mensaje mostrado al cliente…"></textarea></div>
+        <div class="field"><label for="n-schedule">Programar el envío (opcional)</label><input type="datetime-local" id="n-schedule" /></div>
+        <button class="btn btn-primary btn-block" id="send-btn">Publicar notificación</button>
+      </div>
+
+      <div class="card card-pad reveal d2">
+        <div class="section-title"><h2>Notificaciones enviadas / programadas</h2></div>
+        <div id="notif-admin-list"></div>
+      </div>
+    </div>
+  </main>
+</div>
+
+<script src="../js/shell.js"></script>
+<script src="../js/data-service.js"></script>
+<script src="../js/admin-shell.js"></script>
+<script>
+async function boot() {
+  Shell.applyStoredTheme();
+  const ok = await Shell.requireAdminSession();
+  if (!ok) return;
+  await AdminShell.renderAdminShell("notifications");
+
+  const clients = await window.DataService.getClients();
+  const audienceSelect = document.getElementById("n-audience");
+  clients.forEach((c) => {
+    const opt = document.createElement("option");
+    opt.value = c.id;
+    opt.textContent = `${c.name} — ${c.email}`;
+    audienceSelect.appendChild(opt);
+  });
+
+  document.getElementById("send-btn").addEventListener("click", sendNotification);
+  await renderList();
+}
+
+async function sendNotification() {
+  const audience = document.getElementById("n-audience").value;
+  const type = document.getElementById("n-type").value;
+  const title = document.getElementById("n-title").value.trim();
+  const message = document.getElementById("n-message").value.trim();
+  const schedule = document.getElementById("n-schedule").value;
+
+  if (!title || !message) { Shell.toast("El título y el mensaje son obligatorios.", "error"); return; }
+
+  await window.DataService.createNotification({
+    audience, type, title, message,
+    scheduledAt: schedule ? new Date(schedule).toISOString() : null,
+  });
+
+  document.getElementById("n-title").value = "";
+  document.getElementById("n-message").value = "";
+  document.getElementById("n-schedule").value = "";
+
+  await renderList();
+  Shell.toast(schedule ? "Notificación programada." : "Notificación enviada.");
+}
+
+async function renderList() {
+  const notifs = await window.DataService.getAllNotifications();
+  const clients = await window.DataService.getClients();
+  const clientById = Object.fromEntries(clients.map((c) => [c.id, c.name]));
+
+  document.getElementById("notif-admin-list").innerHTML = notifs.map((n) => `
+    <div class="notif-item">
+      <div class="notif-icon">${n.type === "success" ? Shell.ICONS.check : n.type === "warning" ? Shell.ICONS.warn : Shell.ICONS.bell}</div>
+      <div style="flex:1; min-width:0;">
+        <div class="notif-title">${n.title}</div>
+        <div class="notif-msg">${n.message}</div>
+        <div class="notif-time">
+          ${n.audience === "all" ? "Todos los clientes" : (clientById[n.audience] || "Cliente")}
+          ${n.scheduledAt && !n.sentAt ? ` · Programada para el ${Shell.fmtDateTime(n.scheduledAt)}` : ` · ${Shell.timeAgo(n.createdAt)}`}
+        </div>
+      </div>
+      <button class="icon-btn" title="Eliminar" onclick="removeNotif('${n.id}')">${AdminShell.ADMIN_ICONS.trash}</button>
+    </div>`).join("") || `<div class="empty-state"><h3>Sin notificaciones</h3><p>Crea tu primera notificación a la izquierda.</p></div>`;
+}
+
+window.removeNotif = async function (id) {
+  await window.DataService.deleteNotification(id);
+  await renderList();
+  Shell.toast("Notificación eliminada.", "info");
+};
+boot();
+</script>
+</body>
+</html>

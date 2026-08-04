@@ -1,0 +1,309 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8" />
+<script>(function(){try{document.documentElement.setAttribute("data-theme", localStorage.getItem("nexura:theme")||"light");}catch(e){}})();</script>
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Nexura Admin — Envíos</title>
+<link rel="stylesheet" href="../css/style.css" />
+<link rel="icon" type="image/svg+xml" href="../assets/favicon.svg" />
+</head>
+<body>
+
+<div class="app-shell">
+  <nav class="sidebar" id="shell-sidebar"></nav>
+
+  <main class="main">
+    <div class="topbar">
+      <div>
+        <h1>Gestión de envíos</h1>
+        <div class="subtitle">Sigue y actualiza cada envío de tarjeta Nexura.</div>
+      </div>
+      <div class="topbar-actions" id="shell-topbar-right"></div>
+    </div>
+
+    <div class="card card-pad reveal d1">
+      <div class="toolbar">
+        <div class="search-box"></div>
+        <select class="select-filter" id="status-filter">
+          <option value="">Todos los estados</option>
+          <option value="En curso">En curso</option>
+          <option value="Retrasada">Retrasada</option>
+          <option value="Entregada">Entregada</option>
+        </select>
+        <button class="btn btn-primary" id="new-shipment-btn">Nuevo envío</button>
+      </div>
+
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr><th>Nº de seguimiento</th><th>Cliente</th><th>Tipo de tarjeta</th><th>Creado el</th><th>Estado</th><th>Progreso</th><th>Acciones</th></tr>
+          </thead>
+          <tbody id="shipments-tbody"></tbody>
+        </table>
+      </div>
+    </div>
+  </main>
+</div>
+
+<!-- VIEW MODAL -->
+<div class="modal-backdrop" id="view-modal">
+  <div class="modal" style="max-width: 640px;">
+    <div class="modal-head"><h3>Detalle del envío</h3><span class="modal-close" data-close="view-modal">&times;</span></div>
+    <div id="view-modal-body"></div>
+  </div>
+</div>
+
+<!-- PROGRESS EDITOR MODAL -->
+<div class="modal-backdrop" id="edit-modal">
+  <div class="modal" style="max-width: 560px;">
+    <div class="modal-head"><h3>Editor de progreso</h3><span class="modal-close" data-close="edit-modal">&times;</span></div>
+    <div>
+      <div class="field">
+        <label>Etapa actual</label>
+        <div class="stepper" id="stepper"></div>
+      </div>
+      <div class="field-row">
+        <div class="field">
+          <label for="edit-date">Fecha personalizada</label>
+          <input type="date" id="edit-date" />
+        </div>
+        <div class="field">
+          <label for="edit-time">Hora personalizada</label>
+          <input type="time" id="edit-time" />
+        </div>
+      </div>
+      <div class="field">
+        <label for="edit-agent">Agente responsable</label>
+        <select id="edit-agent"></select>
+      </div>
+      <div class="field">
+        <label for="edit-comment">Comentario</label>
+        <textarea id="edit-comment" class="f-textarea" placeholder="Añadir un comentario sobre esta etapa…"></textarea>
+      </div>
+      <div class="field" style="flex-direction:row; align-items:center; gap:10px;">
+        <div class="toggle-switch" id="edit-delayed-toggle"></div>
+        <label style="margin-bottom:0;">Marcar este envío como retrasado</label>
+      </div>
+      <button class="btn btn-primary btn-block" id="publish-btn">Publicar actualización</button>
+    </div>
+  </div>
+</div>
+
+<!-- NEW SHIPMENT MODAL -->
+<div class="modal-backdrop" id="new-modal">
+  <div class="modal" style="max-width: 520px;">
+    <div class="modal-head"><h3>Nuevo envío</h3><span class="modal-close" data-close="new-modal">&times;</span></div>
+    <div>
+      <div class="field">
+        <label for="ns-client">Cliente</label>
+        <select id="ns-client"></select>
+      </div>
+      <div class="field">
+        <label for="ns-cardtype">Tipo de tarjeta</label>
+        <select id="ns-cardtype"></select>
+      </div>
+      <div class="field">
+        <label for="ns-agent">Agente encargado</label>
+        <select id="ns-agent"></select>
+      </div>
+      <button class="btn btn-primary btn-block" id="create-shipment-btn">Crear envío</button>
+    </div>
+  </div>
+</div>
+
+<script src="../js/shell.js"></script>
+<script src="../js/data-service.js"></script>
+<script src="../js/admin-shell.js"></script>
+<script>
+let SHIPMENTS = [], AGENTS = [], CLIENTS = [], ACTIVE_ID = null;
+function getSteps() { return window.DataService.STEPS; }
+
+async function boot() {
+  Shell.applyStoredTheme();
+  const ok = await Shell.requireAdminSession();
+  if (!ok) return;
+  await AdminShell.renderAdminShell("shipments");
+
+  document.querySelector(".search-box").innerHTML = `${Shell.ICONS.search}<input type="text" id="search-input" placeholder="Buscar por número de seguimiento o cliente…" />`;
+
+  document.getElementById("search-input").addEventListener("input", renderTable);
+  document.getElementById("status-filter").addEventListener("change", renderTable);
+  document.querySelectorAll(".modal-close").forEach((el) => el.addEventListener("click", () => closeModal(el.dataset.close)));
+  document.querySelectorAll(".modal-backdrop").forEach((el) => el.addEventListener("click", (e) => { if (e.target === el) closeModal(el.id); }));
+
+  document.getElementById("new-shipment-btn").addEventListener("click", openNewModal);
+  document.getElementById("create-shipment-btn").addEventListener("click", createShipment);
+  document.getElementById("publish-btn").addEventListener("click", publishUpdate);
+
+  AGENTS = await window.DataService.getAgents();
+  CLIENTS = await window.DataService.getClients();
+  await loadShipments();
+}
+
+async function loadShipments() {
+  SHIPMENTS = await window.DataService.getShipments();
+  renderTable();
+}
+
+function statusPillClass(s) {
+  if (s.currentStepIndex === 9) return "completed";
+  if (s.delayed) return "rejected";
+  return "processing";
+}
+
+function renderTable() {
+  const q = (document.getElementById("search-input").value || "").toLowerCase();
+  const statusF = document.getElementById("status-filter").value;
+
+  const filtered = SHIPMENTS.filter((s) => {
+    const matchQ = !q || s.trackingId.toLowerCase().includes(q) || s.clientName.toLowerCase().includes(q);
+    const matchS = !statusF || s.status === statusF;
+    return matchQ && matchS;
+  });
+
+  const steps = getSteps();
+  document.getElementById("shipments-tbody").innerHTML = filtered.map((s) => `
+    <tr>
+      <td class="mono">${s.trackingId}</td>
+      <td>
+        <div class="shipment-client">
+          <div class="sc-avatar">${s.clientInitials}</div>
+          <div>${s.clientName}</div>
+        </div>
+      </td>
+      <td>${s.cardType}</td>
+      <td>${Shell.fmtDate(s.createdAt)}</td>
+      <td><span class="status-pill ${statusPillClass(s)}">${s.status}</span></td>
+      <td>${window.DataService.computePercent(s.currentStepIndex)}% — ${steps[s.currentStepIndex].short}</td>
+      <td>
+        <div style="display:flex; gap:6px;">
+          <button class="icon-btn" title="Ver" onclick="openView('${s.id}')">${Shell.ICONS.eye}</button>
+          <button class="icon-btn" title="Editar" onclick="openEdit('${s.id}')">${AdminShell.ADMIN_ICONS.edit}</button>
+          <button class="icon-btn" title="Eliminar" onclick="removeShipment('${s.id}')">${AdminShell.ADMIN_ICONS.trash}</button>
+        </div>
+      </td>
+    </tr>`).join("") || `<tr><td colspan="7"><div class="empty-state"><h3>Sin resultados</h3><p>Ajusta tu búsqueda o tus filtros.</p></div></td></tr>`;
+}
+
+function openModal(id) { document.getElementById(id).classList.add("open"); }
+function closeModal(id) { document.getElementById(id).classList.remove("open"); }
+
+window.openView = function (id) {
+  const s = SHIPMENTS.find((x) => x.id === id);
+  const steps = getSteps();
+  const events = [...s.events].reverse().map((e) => `
+    <div class="log-row">
+      <div class="log-time">${Shell.fmtDateTime(e.date)}</div>
+      <div class="log-text"><b>${steps[e.stepIndex].label}</b> — ${e.comment} <span style="color:var(--text-low);">(${e.agent})</span></div>
+    </div>`).join("");
+
+  document.getElementById("view-modal-body").innerHTML = `
+    <div class="tracking-head" style="margin-bottom:16px;">
+      <div class="tracking-id-block">
+        <div class="eyebrow">Número de seguimiento</div>
+        <div class="tid" style="font-size:20px;">${s.trackingId}</div>
+        <div style="margin-top:8px; display:flex; gap:8px; flex-wrap:wrap;">
+          <span class="card-type-chip">${Shell.ICONS.card}${s.cardType}</span>
+          <span class="status-pill ${statusPillClass(s)}">${s.status}</span>
+        </div>
+      </div>
+    </div>
+    <div class="two-col">
+      <div class="info-row"><div class="k">Cliente</div><div class="v" style="font-family:inherit;">${s.clientName}</div></div>
+      <div class="info-row"><div class="k">Correo</div><div class="v" style="font-family:inherit;">${s.clientEmail}</div></div>
+      <div class="info-row"><div class="k">Dirección</div><div class="v" style="font-family:inherit;">${s.shippingAddress}</div></div>
+      <div class="info-row"><div class="k">Entrega estimada</div><div class="v">${Shell.fmtDate(s.estimatedDelivery)}</div></div>
+    </div>
+    <div class="progress-shell">
+      <div class="p-top"><div class="p-step-label">${steps[s.currentStepIndex].label}</div><div class="p-percent">${window.DataService.computePercent(s.currentStepIndex)}%</div></div>
+      <div class="progress-track"><div class="progress-fill" style="width:${window.DataService.computePercent(s.currentStepIndex)}%;"></div></div>
+    </div>
+    <div class="section-title" style="margin-top:18px;"><h2>Historial</h2></div>
+    ${events}
+  `;
+  openModal("view-modal");
+};
+
+window.openEdit = function (id) {
+  ACTIVE_ID = id;
+  const s = SHIPMENTS.find((x) => x.id === id);
+  const steps = getSteps();
+
+  document.getElementById("stepper").innerHTML = steps.map((step, i) => `
+    <div class="step-chip ${i === s.currentStepIndex ? "active" : i < s.currentStepIndex ? "past" : ""}" data-step="${i}">${step.short}</div>
+  `).join("");
+  document.getElementById("stepper").querySelectorAll(".step-chip").forEach((chip) => {
+    chip.addEventListener("click", () => {
+      document.getElementById("stepper").querySelectorAll(".step-chip").forEach((c) => c.classList.remove("active"));
+      chip.classList.add("active");
+    });
+  });
+
+  const now = new Date();
+  document.getElementById("edit-date").value = now.toISOString().slice(0, 10);
+  document.getElementById("edit-time").value = now.toTimeString().slice(0, 5);
+  document.getElementById("edit-agent").innerHTML = AGENTS.map((a) => `<option value="${a.name}">${a.name} — ${a.role}</option>`).join("");
+  document.getElementById("edit-comment").value = "";
+
+  const toggle = document.getElementById("edit-delayed-toggle");
+  toggle.classList.toggle("on", !!s.delayed);
+  toggle.onclick = () => toggle.classList.toggle("on");
+
+  openModal("edit-modal");
+};
+
+async function publishUpdate() {
+  const chip = document.querySelector("#stepper .step-chip.active");
+  if (!chip) { Shell.toast("Selecciona una etapa.", "error"); return; }
+  const stepIndex = parseInt(chip.dataset.step, 10);
+  const date = document.getElementById("edit-date").value;
+  const time = document.getElementById("edit-time").value;
+  const customDate = date ? `${date}T${time || "00:00"}:00` : null;
+  const agent = document.getElementById("edit-agent").value;
+  const comment = document.getElementById("edit-comment").value;
+  const delayed = document.getElementById("edit-delayed-toggle").classList.contains("on");
+
+  await window.DataService.advanceShipment(ACTIVE_ID, { stepIndex, comment, agent, customDate });
+  await window.DataService.setDelayed(ACTIVE_ID, delayed);
+  await loadShipments();
+  closeModal("edit-modal");
+  Shell.toast("Actualización publicada y reflejada en el portal del cliente.");
+}
+
+window.removeShipment = async function (id) {
+  if (!confirm("¿Eliminar definitivamente este envío?")) return;
+  await window.DataService.deleteShipment(id);
+  await loadShipments();
+  Shell.toast("Envío eliminado.", "info");
+};
+
+function openNewModal() {
+  document.getElementById("ns-client").innerHTML = CLIENTS.map((c) => `<option value="${c.id}">${c.name} — ${c.email}</option>`).join("");
+  document.getElementById("ns-cardtype").innerHTML = window.DataService.CARD_TYPES.map((t) => `<option value="${t}">${t}</option>`).join("");
+  document.getElementById("ns-agent").innerHTML = AGENTS.map((a) => `<option value="${a.name}">${a.name} — ${a.role}</option>`).join("");
+  openModal("new-modal");
+}
+
+async function createShipment() {
+  const client = CLIENTS.find((c) => c.id === document.getElementById("ns-client").value);
+  const cardType = document.getElementById("ns-cardtype").value;
+  const agent = document.getElementById("ns-agent").value;
+
+  const shipment = await window.DataService.createShipment({
+    clientId: client.id,
+    clientName: client.name,
+    clientEmail: client.email,
+    clientInitials: client.initials,
+    shippingAddress: client.address,
+    cardType,
+    agent,
+  });
+  await loadShipments();
+  closeModal("new-modal");
+  Shell.toast(`Envío creado — código de seguimiento: ${shipment.trackingId}`);
+}
+boot();
+</script>
+</body>
+</html>
