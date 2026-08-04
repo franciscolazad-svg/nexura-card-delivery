@@ -99,6 +99,20 @@
         <label for="ns-client">Cliente</label>
         <select id="ns-client"></select>
       </div>
+      <div id="ns-new-client-fields" style="display:none;">
+        <div class="field">
+          <label for="ns-new-name">Nombre del cliente</label>
+          <input type="text" id="ns-new-name" placeholder="Ej. Laura Dinescu" />
+        </div>
+        <div class="field">
+          <label for="ns-new-email">Correo electrónico</label>
+          <input type="email" id="ns-new-email" placeholder="laura@ejemplo.com" />
+        </div>
+        <div class="field">
+          <label for="ns-new-address">Dirección de entrega</label>
+          <input type="text" id="ns-new-address" placeholder="Calle, número, ciudad" />
+        </div>
+      </div>
       <div class="field">
         <label for="ns-cardtype">Tipo de tarjeta</label>
         <select id="ns-cardtype"></select>
@@ -279,14 +293,40 @@ window.removeShipment = async function (id) {
 };
 
 function openNewModal() {
-  document.getElementById("ns-client").innerHTML = CLIENTS.map((c) => `<option value="${c.id}">${c.name} — ${c.email}</option>`).join("");
+  document.getElementById("ns-client").innerHTML =
+    `<option value="__new__">+ Nuevo cliente…</option>` +
+    CLIENTS.map((c) => `<option value="${c.id}">${c.name} — ${c.email}</option>`).join("");
   document.getElementById("ns-cardtype").innerHTML = window.DataService.CARD_TYPES.map((t) => `<option value="${t}">${t}</option>`).join("");
   document.getElementById("ns-agent").innerHTML = AGENTS.map((a) => `<option value="${a.name}">${a.name} — ${a.role}</option>`).join("");
+
+  const clientSelect = document.getElementById("ns-client");
+  const newFields = document.getElementById("ns-new-client-fields");
+  newFields.style.display = clientSelect.value === "__new__" ? "block" : "none";
+  clientSelect.onchange = () => {
+    newFields.style.display = clientSelect.value === "__new__" ? "block" : "none";
+  };
+  document.getElementById("ns-new-name").value = "";
+  document.getElementById("ns-new-email").value = "";
+  document.getElementById("ns-new-address").value = "";
+
   openModal("new-modal");
 }
 
 async function createShipment() {
-  const client = CLIENTS.find((c) => c.id === document.getElementById("ns-client").value);
+  let client;
+  const selected = document.getElementById("ns-client").value;
+
+  if (selected === "__new__") {
+    const name = document.getElementById("ns-new-name").value.trim();
+    const email = document.getElementById("ns-new-email").value.trim();
+    const address = document.getElementById("ns-new-address").value.trim();
+    if (!name || !email) { Shell.toast("El nombre y el correo del nuevo cliente son obligatorios.", "error"); return; }
+    client = await window.DataService.createClient({ name, email, address });
+    CLIENTS.push(client);
+  } else {
+    client = CLIENTS.find((c) => c.id === selected);
+  }
+
   const cardType = document.getElementById("ns-cardtype").value;
   const agent = document.getElementById("ns-agent").value;
 
